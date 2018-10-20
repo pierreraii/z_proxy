@@ -285,7 +285,7 @@ int getFileFromServer(char *filename){
     struct sockaddr_in address;
     int sock = 0, valread;
     struct sockaddr_in serv_addr;
-    char *reqMessage1 = "GET /helloproxy.txt HTTP/1.0\r\n\r\n";
+    char *reqMessage1 = "GET /helloproxy.txt HTTP/1.0\r\n\r\n"; // Unused
 
     char reqMessage[1024] = "GET /";
     strcat(reqMessage, filename); // Only done for demonstration purposes - shouldnt be used in real word like this
