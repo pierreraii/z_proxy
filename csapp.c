@@ -878,7 +878,7 @@ ssize_t rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
 	    return -1;	  /* Error */
     }
     *bufp = 0;
-    return n-1;
+    return n - 1;
 }
 /* $end rio_readlineb */
 
