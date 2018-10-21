@@ -5,7 +5,6 @@
  */
 #include "csapp.h"
 #include "stdbool.h"
-#include "curl/curl.h"
 #include <stdio.h>
 #include <sys/socket.h>
 #include <stdlib.h>
@@ -14,7 +13,7 @@
 #define PORT 80
 
 void doit(int fd);
-void read_requesthdrs(rio_t *rp);
+void read_requesthdrs(rio_t *rp, char *hostname);
 int parse_uri(char *uri, char *filename, char *cgiargs);
 void serve_static(int fd, char *filename, int filesize);
 void get_filetype(char *filename, char *filetype);
@@ -22,7 +21,8 @@ void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
-bool isInCache(char *filename);
+bool is_cached(char *filename);
+int get_file_from_server(char *hostname, char *filename, int *port)
 
 int main(int argc, char **argv)
 {
@@ -70,24 +70,30 @@ void doit(int fd)
         return;
     printf("%s", buf);
     sscanf(buf, "%s %s %s", method, uri, version); //line:netp:doit:parserequest
+  
+  	int port = 80;
+  	char hostname[MAXLINE];
+
     if (strcasecmp(method, "GET"))
     { //line:netp:doit:beginrequesterr
         clienterror(fd, method, "501", "Not Implemented",
                     "Tiny does not implement this method");
         return;
     }                       //line:netp:doit:endrequesterr
-    read_requesthdrs(&rio); //line:netp:doit:readrequesthdrs
+
+    read_requesthdrs(&rio, hostname); //line:netp:doit:readrequesthdrs
+    sscanf(uri, "http://%*[^/]%s", filename);
 
     /* Parse URI from GET request */
-    is_static = parse_uri(uri, filename, cgiargs); //line:netp:doit:staticcheck
+    // is_static = parse_uri(uri, filename, cgiargs); //line:netp:doit:staticcheck
 
     // Check for cache first
 
-    if(isInCache(filename)){
+    if(is_cached(filename)){
         
     }else{
         // Get from server
-        int res = getFileFromServer(filename);
+        int res = get_file_from_server(hostname, port, filename);
     }
 
     // Else get it from server
@@ -122,20 +128,27 @@ void doit(int fd)
 }
 /* $end doit */
 
+void get_hostname(char *uri, char *hostname, char *filename, int *port)
+{
+	// http://www.lau.edu.lb/slideshow4/_imgs/slideshow-arrow-right.png
+  sscanf(uri, "http://%s/%s", hostname, filename);
+}
+
 /*
  * read_requesthdrs - read HTTP request headers
  */
 /* $begin read_requesthdrs */
-void read_requesthdrs(rio_t *rp)
+void read_requesthdrs(rio_t *rp, char *hostname)
 {
     char buf[MAXLINE];
 
     Rio_readlineb(rp, buf, MAXLINE);
+    sscanf(buf, "Host: %s", hostname);
+
     printf("%s", buf);
     while (strcmp(buf, "\r\n"))
     { //line:netp:readhdrs:checkterm
         Rio_readlineb(rp, buf, MAXLINE);
-        printf("%s", buf);
     }
     return;
 }
@@ -148,6 +161,7 @@ void read_requesthdrs(rio_t *rp)
 /* $begin parse_uri */
 int parse_uri(char *uri, char *filename, char *cgiargs)
 {
+
     char *ptr;
 
     if (!strstr(uri, "cgi-bin"))
@@ -277,11 +291,11 @@ void clienterror(int fd, char *cause, char *errnum,
 }
 /* $end clienterror */
 
-bool isInCache(char* filename){
+bool is_cached(char* filename){
     return false;
 }
 
-int getFileFromServer(char *filename){
+int get_file_from_server(char *hostname, char *filename, int *port){
     struct sockaddr_in address;
     int sock = 0, valread;
     struct sockaddr_in serv_addr;
