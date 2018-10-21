@@ -12,6 +12,12 @@
 #include <string.h>
 #define PORT 80
 
+struct server_return
+{
+    int server_fd;
+    char *buffer;
+};
+
 void doit(int fd);
 void read_requesthdrs(rio_t *rp, char *hostname);
 int parse_uri(char *uri, char *filename, char *cgiargs);
@@ -22,7 +28,7 @@ void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
 bool is_cached(char *filename);
-int get_file_from_server(char *hostname, char *filename, int *port);
+struct server_return get_file_from_server(char *hostname, char *filename, int port);
 
 int main(int argc, char **argv)
 {
@@ -56,51 +62,60 @@ int main(int argc, char **argv)
  * doit - handle one HTTP request/response transaction
  */
 /* $begin doit */
-void doit(int fd)
+void doit(int clientfd)
 {
     int is_static;
     struct stat sbuf;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
     char filename[MAXLINE], cgiargs[MAXLINE];
-    rio_t rio;
+    rio_t client_rio; // Client
+    rio_t server_rio;
+    size_t n;
+    int port = 80;
+    char hostname[MAXLINE];
 
     /* Read request line and headers */
-    Rio_readinitb(&rio, fd);
-    if (!Rio_readlineb(&rio, buf, MAXLINE)) //line:netp:doit:readrequest
+    Rio_readinitb(&client_rio, clientfd);
+
+    if (!Rio_readlineb(&client_rio, buf, MAXLINE))
+    { //line:netp:doit:readrequest
         return;
-    printf("%s", buf);
+    }
+        
     sscanf(buf, "%s %s %s", method, uri, version); //line:netp:doit:parserequest
-  
-  	int port = 80;
-  	char hostname[MAXLINE];
 
     if (strcasecmp(method, "GET"))
     { //line:netp:doit:beginrequesterr
-        clienterror(fd, method, "501", "Not Implemented",
+        clienterror(clientfd, method, "501", "Not Implemented",
                     "Tiny does not implement this method");
         return;
     }                       //line:netp:doit:endrequesterr
 
-    read_requesthdrs(&rio, hostname); //line:netp:doit:readrequesthdrs
+    read_requesthdrs(&client_rio, hostname); //line:netp:doit:readrequesthdrs
     sscanf(uri, "http://%*[^/]%s", filename);
-
     /* Parse URI from GET request */
-    // is_static = parse_uri(uri, filename, cgiargs); //line:netp:doit:staticcheck
 
     // Check for cache first
-
     if(is_cached(filename)){
         
     }else{
-        // Get from server
-        int res = get_file_from_server(hostname, port, filename);
+        // Get filefrom server
+        struct server_return res = get_file_from_server(hostname, filename, port);
+        Rio_readinitb(&server_rio, res.server_fd);
+        n = Rio_readnb(&server_rio, res.buffer, MAXLINE);
+        printf("n: %s", n);
+        while (n > 0)
+        {
+            printf("server received %d bytes\n", (int)n);
+            Rio_writen(clientfd, res.buffer, n);
+        }
     }
 
     // Else get it from server
 
     if (stat(filename, &sbuf) < 0)
     { //line:netp:doit:beginnotfound
-        clienterror(fd, filename, "404", "Not found",
+        clienterror(clientfd, filename, "404", "Not found",
                     "Tiny couldn't find this file");
         return;
     } //line:netp:doit:endnotfound
@@ -109,21 +124,21 @@ void doit(int fd)
     { /* Serve static content */
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode))
         { //line:netp:doit:readable
-            clienterror(fd, filename, "403", "Forbidden",
+            clienterror(clientfd, filename, "403", "Forbidden",
                         "Tiny couldn't read the file");
             return;
         }
-        serve_static(fd, filename, sbuf.st_size); //line:netp:doit:servestatic
+        serve_static(clientfd, filename, sbuf.st_size); //line:netp:doit:servestatic
     }
     else
     { /* Serve dynamic content */
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode))
         { //line:netp:doit:executable
-            clienterror(fd, filename, "403", "Forbidden",
+            clienterror(clientfd, filename, "403", "Forbidden",
                         "Tiny couldn't run the CGI program");
             return;
         }
-        serve_dynamic(fd, filename, cgiargs); //line:netp:doit:servedynamic
+        serve_dynamic(clientfd, filename, cgiargs); //line:netp:doit:servedynamic
     }
 }
 /* $end doit */
@@ -295,43 +310,64 @@ bool is_cached(char* filename){
     return false;
 }
 
-int get_file_from_server(char *hostname, char *filename, int *port){
+struct server_return get_file_from_server(char *hostname, char *filename, int port)
+{
     struct sockaddr_in address;
-    int sock = 0, valread;
+    int sock = 0, valread, flags;
     struct sockaddr_in serv_addr;
-    char *reqMessage1 = "GET /helloproxy.txt HTTP/1.0\r\n\r\n"; // Unused
+    struct addrinfo *p, *listp, hints;
+    char ip_addr[MAXLINE];
+    char *host_info[1024];
+    struct server_return server_return11;
 
-    char reqMessage[1024] = "GET /";
-    strcat(reqMessage, filename); // Only done for demonstration purposes - shouldnt be used in real word like this
-    strcat(reqMessage, " HTTP/1.0\r\n\r\n");
+    size_t n;
+    char buf[MAXLINE];
+    rio_t rio;
+
+    char request_headers[1024] = "GET http://";
+    strcat(request_headers, hostname); // hostname example: lau.edu.lb
+    strcat(request_headers, filename); // filename example: /index.aspx ;-)
+    strcat(request_headers, " HTTP/1.0\r\n\r\n");
+
+    printf("host info: %s", request_headers);
 
     char buffer[1024] = {0};
     // Creating socket file descriptor
-    int server_fd;
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
     {
         printf("\n Socket creation error \n");
-        return -1;
+        // return -1;
     }
 
     memset(&serv_addr, '0', sizeof(serv_addr));
 
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(PORT);
+    hints.ai_family = AF_INET;           /* IPv4 only */
+    hints.ai_socktype = SOCK_STREAM;     /* Connections only */
+
+    Getaddrinfo(hostname, NULL, &hints, &listp);
+
+    /* Walk the list and display each IP address */
+    flags = NI_NUMERICHOST; /* Display address instead of name */
+    Getnameinfo(listp->ai_addr, listp->ai_addrlen, ip_addr, MAXLINE, NULL, 0, flags);
+    printf("%s\n", ip_addr);
 
     // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, "173.254.28.49", &serv_addr.sin_addr) <= 0)
+    if (inet_pton(AF_INET, ip_addr, &serv_addr.sin_addr) <= 0)
     {
         printf("\nInvalid address/ Address not supported \n");
-        return -1;
+        // return -1;
     }
 
     if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     {
         printf("\nConnection Failed \n");
-        return -1;
+        // return -1;
     }
-    send(sock, reqMessage, strlen(reqMessage), 0);
+    send(sock, request_headers, strlen(request_headers), 0);
     valread = read(sock, buffer, 1024);
-    printf("%s\n", buffer);
+    server_return11.server_fd = sock;
+    server_return11.buffer = buffer;
+    return server_return11;
 };

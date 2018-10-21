@@ -4,6 +4,7 @@
         "cdefs.h": "c",
         "stdbool.h": "c",
         "csapp.h": "c",
-        "curl.h": "c"
+        "curl.h": "c",
+        "cache.h": "c"
     }
 }
