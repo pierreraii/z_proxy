@@ -12,12 +12,6 @@
 #include <string.h>
 #define PORT 80
 
-struct server_return
-{
-    int server_fd;
-    char *buffer;
-};
-
 void doit(int fd);
 void read_requesthdrs(rio_t *rp, char *hostname);
 int parse_uri(char *uri, char *filename, char *cgiargs);
@@ -28,7 +22,6 @@ void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
 bool is_cached(char *filename);
-struct server_return get_file_from_server(char *hostname, char *filename, int port);
 
 int main(int argc, char **argv)
 {
@@ -65,14 +58,16 @@ int main(int argc, char **argv)
 void doit(int clientfd)
 {
     int is_static;
+    int serverfd;
     struct stat sbuf;
-    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
+    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE], buffer2[MAXLINE];
     char filename[MAXLINE], cgiargs[MAXLINE];
     rio_t client_rio; // Client
     rio_t server_rio;
     size_t n;
-    int port = 80;
+    char* port = "80";
     char hostname[MAXLINE];
+    int content_len;
 
     /* Read request line and headers */
     Rio_readinitb(&client_rio, clientfd);
@@ -98,16 +93,32 @@ void doit(int clientfd)
     // Check for cache first
     if(is_cached(filename)){
         
-    }else{
+    } else{
+        char request_headers[1024] = "GET http://";
+        strcat(request_headers, hostname); // hostname example: lau.edu.lb
+        strcat(request_headers, filename); // filename example: /index.aspx ;-)
+        strcat(request_headers, " HTTP/1.0\r\n\r\n");
         // Get filefrom server
-        struct server_return res = get_file_from_server(hostname, filename, port);
-        Rio_readinitb(&server_rio, res.server_fd);
-        n = Rio_readnb(&server_rio, res.buffer, MAXLINE);
-        printf("n: %s", n);
-        while (n > 0)
+        if ((serverfd = Open_clientfd(hostname, port)) == -1)
         {
-            printf("server received %d bytes\n", (int)n);
-            Rio_writen(clientfd, res.buffer, n);
+            printf("Open Serverfd failed.\n");
+            return;
+        }
+
+        /* Associate serverfd  */
+        rio_readinitb(&server_rio, serverfd);
+
+        /* Write HTTP request object to Server through serverfd */
+        if (rio_writen(serverfd, request_headers, strlen(request_headers)) < 0)
+        {
+            printf("Server request write failed\n");
+            close(serverfd);
+            return;
+        }
+        /* Read response from Server, send to client and add to cache */
+        while ((content_len = rio_readnb(&server_rio, buffer2, MAXLINE)) > 0)
+        {
+            rio_writen(clientfd, buffer2, content_len);
         }
     }
 
@@ -309,65 +320,3 @@ void clienterror(int fd, char *cause, char *errnum,
 bool is_cached(char* filename){
     return false;
 }
-
-struct server_return get_file_from_server(char *hostname, char *filename, int port)
-{
-    struct sockaddr_in address;
-    int sock = 0, valread, flags;
-    struct sockaddr_in serv_addr;
-    struct addrinfo *p, *listp, hints;
-    char ip_addr[MAXLINE];
-    char *host_info[1024];
-    struct server_return server_return11;
-
-    size_t n;
-    char buf[MAXLINE];
-    rio_t rio;
-
-    char request_headers[1024] = "GET http://";
-    strcat(request_headers, hostname); // hostname example: lau.edu.lb
-    strcat(request_headers, filename); // filename example: /index.aspx ;-)
-    strcat(request_headers, " HTTP/1.0\r\n\r\n");
-
-    printf("host info: %s", request_headers);
-
-    char buffer[1024] = {0};
-    // Creating socket file descriptor
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        printf("\n Socket creation error \n");
-        // return -1;
-    }
-
-    memset(&serv_addr, '0', sizeof(serv_addr));
-
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
-    hints.ai_family = AF_INET;           /* IPv4 only */
-    hints.ai_socktype = SOCK_STREAM;     /* Connections only */
-
-    Getaddrinfo(hostname, NULL, &hints, &listp);
-
-    /* Walk the list and display each IP address */
-    flags = NI_NUMERICHOST; /* Display address instead of name */
-    Getnameinfo(listp->ai_addr, listp->ai_addrlen, ip_addr, MAXLINE, NULL, 0, flags);
-    printf("%s\n", ip_addr);
-
-    // Convert IPv4 and IPv6 addresses from text to binary form
-    if (inet_pton(AF_INET, ip_addr, &serv_addr.sin_addr) <= 0)
-    {
-        printf("\nInvalid address/ Address not supported \n");
-        // return -1;
-    }
-
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        printf("\nConnection Failed \n");
-        // return -1;
-    }
-    send(sock, request_headers, strlen(request_headers), 0);
-    valread = read(sock, buffer, 1024);
-    server_return11.server_fd = sock;
-    server_return11.buffer = buffer;
-    return server_return11;
-};
