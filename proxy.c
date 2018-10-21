@@ -22,7 +22,7 @@ void clienterror(int fd, char *cause, char *errnum,
                  char *shortmsg, char *longmsg);
 
 bool is_cached(char *filename);
-int get_file_from_server(char *hostname, char *filename, int *port)
+int get_file_from_server(char *hostname, char *filename, int *port);
 
 int main(int argc, char **argv)
 {
