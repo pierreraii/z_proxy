@@ -1,4 +1,5 @@
 #include "csapp.h"
+#include "cache.h"
 #include "stdbool.h"
 #include "stdio.h"
 #include "stdlib.h"
@@ -116,11 +117,19 @@ void proxy(void *vargp)
         return;
     }
 
+    char *response[MAXLINE];
     while ((content_len = rio_readnb(&server_rio, server_buffer, MAXLINE)) > 0)
     {
+        strcat(response, server_buffer);
         rio_writen(clientfd, server_buffer, content_len);
     }
 
+    struct CachedItem item;
+    item.size = sizeof(response);
+    item.data = response;
+    strcpy(item.url, uri);
+
+    save_in_cache(item);
     Close(clientfd);
 }
 

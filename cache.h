@@ -22,6 +22,10 @@ typedef struct {
   CachedItem* last;
 } CacheList;
 
-//List cache functions here...
+int is_in_cache(char* uri);
+int save_in_cache(CachedItem item);
+CachedItem get_from_cache();
+
+CacheList* list;
 
 #endif /* __CACHE_H__ */
