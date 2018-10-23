@@ -120,6 +120,7 @@ void proxy(void *vargp)
     {
         rio_writen(clientfd, server_buffer, content_len);
     }
+
     Close(clientfd);
 }
 
