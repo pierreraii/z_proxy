@@ -26,6 +26,6 @@ int is_in_cache(char* uri);
 int save_in_cache(CachedItem item);
 CachedItem get_from_cache();
 
-CacheList* list;
+CacheList list;
 
 #endif /* __CACHE_H__ */

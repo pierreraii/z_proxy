@@ -9,7 +9,7 @@
 #include "pthread.h"
 #define PORT 80
 
-void proxy(void *vargp);
+void proxy(int clientfd);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
 void parse_request_headers(rio_t *rp, char *hostname, char *path, char *proxy_buffer);
 
@@ -26,7 +26,7 @@ int main(int argc, char **argv)
     struct sockaddr_storage clientaddr;
     socklen_t clientlen;
     pthread_t tid;
-    pthread_rwlock_init(&lock, 0);
+    // pthread_rwlock_init(&lock, 0);
     // Sem_init(&mutex, 0, 1);
 
     /* Check command line args */
@@ -45,21 +45,22 @@ int main(int argc, char **argv)
                     port, MAXLINE, 0);
         printf("Accepted connection from (%s, %s)\n", hostname, port);
         /* Create thread and let thread handle functions */
-        if ((connfd > 0))
-        {
-            Pthread_create(&tid, NULL, proxy, &connfd);
-        }
+        // if ((connfd > 0))
+        // {
+        //     Pthread_create(&tid, NULL, proxy, &connfd);
+        // }
+        proxy(connfd);
+        Close(connfd);
     }
 }
 
 /*
  * proxy - handle one HTTP request/response transaction
  */
-void proxy(void *vargp)
+void proxy(int clientfd)
 {
     int serverfd;
     int content_len;
-    int clientfd = *((int *)vargp);
 
     char client_buffer[MAXLINE];
     char server_buffer[MAXLINE];
@@ -75,7 +76,7 @@ void proxy(void *vargp)
     rio_t client_rio;
     rio_t server_rio;
 
-    pthread_detach(pthread_self());
+    // pthread_detach(pthread_self());
     // Free(vargp);
     /** Receive Request from Client */
     Rio_readinitb(&client_rio, clientfd);
@@ -116,11 +117,10 @@ void proxy(void *vargp)
         close(serverfd);
         return;
     }
-
     char *response[MAXLINE];
     while ((content_len = rio_readnb(&server_rio, server_buffer, MAXLINE)) > 0)
     {
-        strcat(response, server_buffer);
+        // strcat(response, server_buffer);
         rio_writen(clientfd, server_buffer, content_len);
     }
 
@@ -129,8 +129,11 @@ void proxy(void *vargp)
     item.data = response;
     strcpy(item.url, uri);
 
+    // pthread_rwlock_rdlock(&lock);
     save_in_cache(item);
-    Close(clientfd);
+    // pthread_rwlock_unlock(&lock);
+
+    return;
 }
 
 /*
