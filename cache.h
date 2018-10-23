@@ -12,19 +12,18 @@ struct CachedItem {
   char url[MAXLINE];
   void *data;
   size_t size;
-  CachedItem *prev;
-  CachedItem *next;
+  struct CachedItem *prev;
+  struct CachedItem *next;
 };
 
 typedef struct {
   size_t size;
-  CachedItem* first;
-  CachedItem* last;
+  struct CachedItem* first;
+  struct CachedItem* last;
 } CacheList;
 
-int is_in_cache(char* uri);
-int save_in_cache(CachedItem item);
-CachedItem get_from_cache();
+int save_in_cache(struct CachedItem item);
+CachedItem* get_from_cache(char* uri);
 
 CacheList list;
 
