@@ -1,22 +1,32 @@
 #include "csapp.h"
 #include "stdbool.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <string.h>
+#include "stdio.h"
+#include "stdlib.h"
+#include "sys/socket.h"
+#include "netinet/in.h"
+#include "string.h"
+#include "pthread.h"
 #define PORT 80
 
-void proxy(int fd);
+void proxy(void *vargp);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
 void parse_request_headers(rio_t *rp, char *hostname, char *path, char *proxy_buffer);
+
+/* Thread lock */
+pthread_rwlock_t lock;
+
+/* Mutex */
+static sem_t mutex;
 
 int main(int argc, char **argv)
 {
     int listenfd, connfd;
     char hostname[MAXLINE], port[MAXLINE];
-    socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    socklen_t clientlen;
+    pthread_t tid;
+    pthread_rwlock_init(&lock, 0);
+    // Sem_init(&mutex, 0, 1);
 
     /* Check command line args */
     if (argc != 2)
@@ -33,18 +43,22 @@ int main(int argc, char **argv)
         Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE,
                     port, MAXLINE, 0);
         printf("Accepted connection from (%s, %s)\n", hostname, port);
-        proxy(connfd);
-        Close(connfd);
+        /* Create thread and let thread handle functions */
+        if ((connfd > 0))
+        {
+            Pthread_create(&tid, NULL, proxy, &connfd);
+        }
     }
 }
 
 /*
  * proxy - handle one HTTP request/response transaction
  */
-void proxy(int clientfd)
+void proxy(void *vargp)
 {
     int serverfd;
     int content_len;
+    int clientfd = *((int *)vargp);
 
     char client_buffer[MAXLINE];
     char server_buffer[MAXLINE];
@@ -60,6 +74,8 @@ void proxy(int clientfd)
     rio_t client_rio;
     rio_t server_rio;
 
+    pthread_detach(pthread_self());
+    // Free(vargp);
     /** Receive Request from Client */
     Rio_readinitb(&client_rio, clientfd);
 
@@ -104,6 +120,7 @@ void proxy(int clientfd)
     {
         rio_writen(clientfd, server_buffer, content_len);
     }
+    Close(clientfd);
 }
 
 /*
