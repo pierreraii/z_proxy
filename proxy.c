@@ -135,7 +135,7 @@ void proxy(int clientfd)
     char response[MAXLINE];
     while ((content_len = rio_readnb(&server_rio, server_buffer, MAXLINE)) > 0)
     {
-        // strcat(response, server_buffer);
+        strcat(response, server_buffer);
         rio_writen(clientfd, server_buffer, content_len);
     }
 
