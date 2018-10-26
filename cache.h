@@ -22,7 +22,7 @@ typedef struct {
   struct CachedItem* last;
 } CacheList;
 
-int save_in_cache(struct CachedItem item);
+int save_in_cache(struct CachedItem *item);
 CachedItem* get_from_cache(char* uri);
 
 CacheList list;
