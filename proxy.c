@@ -14,7 +14,7 @@ void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longms
 void parse_request_headers(rio_t *rp, char *hostname, char *path, char *proxy_buffer);
 
 /* Thread lock */
-// pthread_rwlock_t lock;
+pthread_rwlock_t lock;
 
 int main(int argc, char **argv)
 {
@@ -22,8 +22,8 @@ int main(int argc, char **argv)
     char hostname[MAXLINE], port[MAXLINE];
     struct sockaddr_storage clientaddr;
     socklen_t clientlen;
-    // pthread_t tid;
-    // pthread_rwlock_init(&lock, 0);
+    pthread_t tid;
+    pthread_rwlock_init(&lock, 0);
     // Sem_init(&mutex, 0, 1);
 
     /* Check command line args */
@@ -74,11 +74,9 @@ void proxy(int clientfd)
     rio_t client_rio;
     rio_t server_rio;
 
-    // pthread_detach(pthread_self());
-    // Free(vargp);
+    pthread_detach(pthread_self());
     /** Receive Request from Client */
     Rio_readinitb(&client_rio, clientfd);
-    printf("REC\n");
 
     if (!Rio_readlineb(&client_rio, client_buffer, MAXLINE))
     {
@@ -96,18 +94,17 @@ void proxy(int clientfd)
 
     /** Parse SubPath from Headers */
     sscanf(uri, "http://%*[^/]%s", path);
-    printf("PATH %s\n", path);
 
-    struct CachedItem* found;
+    // pthread_rwlock_rdlock(&lock);
+    struct CachedItem *found;
     found = get_from_cache(uri);
     if(found != NULL) {
-        struct CachedItem found_item = *(found);
-        printf("FOUND %s\n", found_item.url);
-        rio_writen(clientfd, found_item.data, found_item.size);
+        printf("found url --> %s\n", found->url);
+        printf("found data --> %s\n", found->data);
+        rio_writen(clientfd, found->data, found->size);
         return;
-    } else {
-        printf("NOT FOUND\n");
     }
+    // pthread_rwlock_unlock(&lock);
 
     /** Parse Hostname from Headers */
     parse_request_headers(&client_rio, hostname, path, proxy_buffer);
@@ -120,7 +117,6 @@ void proxy(int clientfd)
         return;
     }
 
-    printf("READ SERVER FD\n");
     rio_readinitb(&server_rio, serverfd);
 
     if (rio_writen(serverfd, proxy_buffer, strlen(proxy_buffer)) < 0)
@@ -130,8 +126,6 @@ void proxy(int clientfd)
         return;
     }
 
-    printf("INSIDE\n");
-
     char response[MAXLINE];
     while ((content_len = rio_readnb(&server_rio, server_buffer, MAXLINE)) > 0)
     {
@@ -139,21 +133,15 @@ void proxy(int clientfd)
         rio_writen(clientfd, server_buffer, content_len);
     }
 
-    printf("HAVING RES\n");
-
     struct CachedItem item;
     item.size = sizeof(response);
     item.data = &response;
     strcpy(item.url, uri);
 
-    printf("SRCPY URI %s\n", uri);
+    pthread_rwlock_rdlock(&lock);
+    save_in_cache(&item); 
+    pthread_rwlock_unlock(&lock);
 
-    // pthread_rwlock_rdlock(&lock);
-    save_in_cache(item);
-    printf("SAVED %s\n", item.url);
-    // pthread_rwlock_unlock(&lock);
-
-    printf("DONE\n");
     return;
 }
 
