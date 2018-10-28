@@ -29,12 +29,6 @@ int save_in_cache(struct CachedItem *item)
 
   ++list.size;
 
-  printf("List first: %s\n", list.first->url);
-  printf("List Before last: %s\n", list.last->prev->url);
-  printf("List last: %s\n", list.last->url);
-  // printf("list.size: %d\n", (int)list.size);
-  // printf("FIRST: %s\n", list.first->url);
-  // printf("NEW FIRST1111: %s\n", list.first->next->url);
   return 1;
 }
 
@@ -44,13 +38,11 @@ CachedItem* get_from_cache(char* uri) {
     return NULL;
   }
   struct CachedItem *ptr = list.first;
-  printf("cache check, %s\n", uri);
   int i = 0;
   while (ptr->next != NULL)
   {
     if (strcmp(ptr->url, uri) == 0)
     {
-      printf("found!!!!!!, %d\n", i);
       return ptr;
     }
     ptr = ptr->next;
